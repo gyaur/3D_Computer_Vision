@@ -28,9 +28,8 @@ def load(fname: str) -> np.ndarray:
     return dialect, np.array(temp)
 
 
-def distance(point, v) -> float:
-    w = np.abs(np.dot(point, v[:-1]) + v[-1])
-    return w / np.linalg.norm(v[:-1], 2)
+def distance(points, v) -> np.ndarray:
+    return np.abs(np.sum(points * v[:-1], axis=1) + v[-1]) / np.linalg.norm(v[:-1], 2)
 
 
 def LSQ(points: np.ndarray, inc_inliers: np.ndarray, threshold: float,
@@ -53,8 +52,7 @@ def LSQ(points: np.ndarray, inc_inliers: np.ndarray, threshold: float,
     a, b, c = eigenvecs[2, :]
     d = -(a * masspoint[0] + b * masspoint[1] + c * masspoint[2])
     plane = np.array([a, b, c, d])
-    dist = lambda point: distance(point, plane)
-    distances_mask = np.apply_along_axis(dist, 1, points) < threshold
+    distances_mask = distance(points, plane) < threshold
     inliers = points[distances_mask]
     return inliers, plane
 
@@ -94,8 +92,7 @@ def ransac(points: np.ndarray,
         d = -(a * A[0] + b * A[1] + c * A[2])
         plane = np.array([a, b, c, d])
 
-        dist = lambda point: distance(point, plane)
-        distances_mask = np.apply_along_axis(dist, 1, points) < threshold
+        distances_mask = distance(points, plane) < threshold
         inliers = points[distances_mask]
         if len(inliers) > len(best_inliers):
 
