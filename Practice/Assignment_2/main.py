@@ -1,5 +1,4 @@
-from random import choice
-from typing import Any, Callable, Iterable, Optional, Tuple
+from typing import Callable, Optional, Tuple
 import cv2 as cv
 import numpy as np
 import random
@@ -8,9 +7,6 @@ from dataclasses import dataclass
 from typing import Iterable
 import csv
 from math import sqrt
-from numpy.core.arrayprint import printoptions
-from numpy.lib.function_base import average, insert
-from numpy.lib.shape_base import apply_along_axis
 
 EPSILON = 0.0000001
 K_SIZE = 3
@@ -29,14 +25,14 @@ def load(fname: str) -> np.ndarray:
 
 
 def distance(points, v) -> np.ndarray:
-    return np.abs(np.sum(points * v[:-1], axis=1) + v[-1]) / np.linalg.norm(v[:-1], 2)
+    return np.abs(np.sum(points * v[:-1], axis=1) + v[-1]) / np.linalg.norm(
+        v[:-1], 2)
 
 
 def LSQ(points: np.ndarray, inc_inliers: np.ndarray, threshold: float,
         **kwargs) -> Tuple[np.ndarray, np.ndarray]:
     masspoint = np.zeros((3, ))
-    for inlier in inc_inliers:
-        masspoint += inlier
+    masspoint += np.sum(inc_inliers, axis=0)
 
     masspoint /= inc_inliers.shape[0]
     normalized_points = inc_inliers - masspoint
@@ -74,7 +70,7 @@ def ransac(points: np.ndarray,
     best_plane = np.empty((3, ))
 
     for num_iter in range(max_iter):
-        if num_iter % 10 == 0 and inc_inliers is None:
+        if num_iter % 100 == 0 and inc_inliers is None:
             print(f"\r{round((num_iter/max_iter)*100,2)}%", end="")
         while True:
             sample = random.choices(sample_origin, k=K_SIZE)
@@ -82,7 +78,6 @@ def ransac(points: np.ndarray,
                     sample[2] != sample[1]) and np.any(sample[0] != sample[2]):
                 break
 
-        #points
         A = sample[0]
         B = sample[1]
         C = sample[2]
@@ -96,22 +91,17 @@ def ransac(points: np.ndarray,
         inliers = points[distances_mask]
         if len(inliers) > len(best_inliers):
 
-            best_inliers = np.array(inliers[:])
+            best_inliers = np.copy(inliers)
+            best_plane = np.copy(plane)
             inliers = np.empty((1, ))
-            best_plane = np.array([a, b, c, d])
             if is_inner:
                 optimized_inliers, optimized_plane = local_optimizer(
                     points=points,
                     threshold=threshold,
-                    max_iter=100,
+                    max_iter=1000,
                     inc_inliers=best_inliers)
-                if len(optimized_inliers) > len(best_inliers):
-                    best_inliers = np.array(optimized_inliers[:])
-                    best_plane = np.array(optimized_plane[:])
-                else:
-                    print("this happens")
-                    print("asd")
-
+                best_inliers = np.copy(optimized_inliers)
+                best_plane = np.copy(optimized_plane)
     print(f"\r100.00%")
 
     return best_inliers, best_plane
@@ -119,9 +109,9 @@ def ransac(points: np.ndarray,
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("file", type=str, default="room.xyz")
-    parser.add_argument("iteration", type=int, default=1000)
-    parser.add_argument("optimizer", choices=["LSQ", "RANSAC"], default="LSQ")
+    parser.add_argument("file", type=str)
+    parser.add_argument("iteration", type=int)
+    parser.add_argument("optimizer", choices=["LSQ", "RANSAC"])
     return parser.parse_args()
 
 
@@ -141,7 +131,7 @@ if __name__ == "__main__":
     print(f"inliers found: {len(best_inlieres)}")
     print(f"the plane {best_line}")
 
-    def it(points, inliers):
+    def output_iterator(points, inliers):
         for point in points:
             color = [0., 0., 0.]
             if any(np.sum(point == inliers, axis=1) == 3):
@@ -150,4 +140,4 @@ if __name__ == "__main__":
 
     with open(f"ransaced_{args.file[:-3]}txt", "w") as f:
         writer = csv.writer(f, dialect)
-        writer.writerows(it(points, best_inlieres))
+        writer.writerows(output_iterator(points, best_inlieres))
