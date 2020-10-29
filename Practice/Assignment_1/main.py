@@ -13,14 +13,13 @@ def detect_edges(img, threshold1, threshold2):
 
 
 def ransac(points: np.ndarray, threshold: float, max_iter: int):
-    num_iter = 0
-    best_inliers = []
-    inliers = []
+    best_inliers = np.empty((1, ))
+    inliers = np.empty((1, ))
     lines = []
 
     best_line = np.ones((3, ))
 
-    while (num_iter < max_iter):
+    for _ in range(max_iter):
         while True:
             sample = random.choices(points, k=K_SIZE)
             if np.any(sample[0] != sample[1]):
@@ -36,16 +35,17 @@ def ransac(points: np.ndarray, threshold: float, max_iter: int):
         b = v[0]
         c = -(a * point1[0] + b * point1[1])
 
-        distance = lambda point: abs(a * point[0] + b * point[1] + c)
-        inliers = [point for point in points if distance(point) < threshold]
+        line = np.array([a, b, c])
+        distance_mask = np.abs(np.dot(points, line[:-1]) +
+                               line[-1]) < threshold
+        inliers = points[distance_mask]
         if len(inliers) > MIN_POINTS_FOR_LINE:
-            lines.append(np.array([a, b, c]))
+            lines.append(np.copy(line))
         if len(inliers) > len(best_inliers):
-            best_inliers = inliers[:]
-            inliers = []
+            best_inliers = np.copy(inliers)
+            inliers = np.empty((1, ))
             best_line = np.array([a, b, c])
 
-        num_iter += 1
 
     return best_line, lines
 
@@ -75,12 +75,11 @@ if __name__ == "__main__":
                 points.append((x, y))
 
     points = np.array(points)
-    bestline, lines = ransac(points=points,
+    _, lines = ransac(points=points,
                              threshold=1.0,
                              max_iter=args.iteration)
     for line in lines:
         draw_line(line, img)
-    draw_line(bestline, img, (0, 0, 255))
 
     cv.imshow("RANSAC", img)
     cv.imwrite(f"ransac_{args.iteration}_{args.image}", img)
