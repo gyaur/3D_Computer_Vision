@@ -14,7 +14,6 @@ def detect_edges(img, threshold1, threshold2):
 
 def ransac(points: np.ndarray, threshold: float, max_iter: int):
     best_inliers = np.empty((1, ))
-    inliers = np.empty((1, ))
     lines = []
 
     best_line = np.ones((3, ))
@@ -43,7 +42,6 @@ def ransac(points: np.ndarray, threshold: float, max_iter: int):
             lines.append(np.copy(line))
         if len(inliers) > len(best_inliers):
             best_inliers = np.copy(inliers)
-            inliers = np.empty((1, ))
             best_line = np.array([a, b, c])
 
 
