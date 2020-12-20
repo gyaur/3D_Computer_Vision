@@ -1,13 +1,20 @@
+from operator import index
 import cv2 as cv
 from feature_matcher import get_features
 import sys
 import numpy as np
+from math import sqrt
 
 
-def calc_homogrpahy(src_points, dst_points):
+def calc_homography(src_points, dst_points):
+
+    normalized_src_points, normalized_dst_points, T1, T2 = normalize(
+        src_points, dst_points)
+
     iter_num = len(point_pairs)
     A = np.zeros((2 * iter_num, 9))
-    for i, (first, second) in enumerate(zip(src_points, dst_points)):
+    for i, (first, second) in enumerate(
+            zip(normalized_src_points, normalized_dst_points)):
         u1 = first[0]
         v1 = first[1]
 
@@ -44,14 +51,45 @@ def calc_homogrpahy(src_points, dst_points):
 
     # print(H)
 
-    return H
+    return np.linalg.inv(T2) @ H @ T1
+
+
+def normalize(src_points, dst_points):
+    # pts = np.concatenate((src_points, dst_points), axis=-1)
+    normalized_src_points = np.copy(src_points[:, :2])
+    masspoint = np.sum(normalized_src_points, axis=0)
+    masspoint /= normalized_src_points.shape[0]
+    avg_distance = np.average(np.linalg.norm(normalized_src_points, axis=1))
+    ratio = sqrt(2) / avg_distance
+    normalized_src_points -= masspoint
+    normalized_src_points *= ratio
+    T1 = np.eye(3)
+    T1[0, 0] = ratio
+    T1[1, 1] = ratio
+    T1[0, 2] = -ratio * masspoint[0]
+    T1[1, 2] = -ratio * masspoint[1]
+
+    normalized_dst_points = np.copy(dst_points[:, :2])
+    masspoint = np.sum(normalized_dst_points, axis=0)
+    masspoint /= normalized_dst_points.shape[0]
+    avg_distance = np.average(np.linalg.norm(normalized_dst_points, axis=1))
+    ratio = sqrt(2) / avg_distance
+    normalized_dst_points -= masspoint
+    normalized_dst_points *= ratio
+    T2 = np.eye(3)
+    T2[0, 0] = ratio
+    T2[1, 1] = ratio
+    T2[0, 2] = -ratio * masspoint[0]
+    T2[1, 2] = -ratio * masspoint[1]
+    return normalized_src_points, normalized_dst_points, T1, T2
 
 
 def num_inlier(src_points, dst_points, H, threshold) -> float:
     # print(H.shape,src_points.shape)
     proj_points = (H @ src_points.T).T
     error = np.sqrt(
-        np.sum(np.square(dst_points - (proj_points / proj_points[:,-1].reshape(-1,1))),
+        np.sum(np.square(dst_points -
+                         (proj_points / proj_points[:, -1].reshape(-1, 1))),
                axis=1))
     mask = error < threshold
     return np.sum(mask)
@@ -64,13 +102,13 @@ def ransac(src_points, dst_points, threshold, max_iter):
         indices = np.random.choice(len(src_points), 15, replace=False)
         selected_src_points = src_points[indices]
         selected_dst_points = dst_points[indices]
-        H = calc_homogrpahy(src_points=selected_src_points,
+        H = calc_homography(src_points=selected_src_points,
                             dst_points=selected_dst_points)
 
         inliers = num_inlier(src_points=selected_src_points,
-                              dst_points=selected_dst_points,
-                              H=H,
-                              threshold=threshold)
+                             dst_points=selected_dst_points,
+                             H=H,
+                             threshold=threshold)
         if inliers > best_inlier_count:
             best_inlier_count = inliers
             best_homography = H
@@ -105,14 +143,12 @@ if __name__ == "__main__":
     img1 = cv.imread(sys.argv[1])
     img2 = cv.imread(sys.argv[2])
 
-    # img1 = cv.imread("a.png")
-    # img2 = cv.imread("b.png")
-
     point_pairs = get_features(img1, img2)
 
-
-    src_points = np.array([(pair[0][1],pair[0][0], 1) for pair in point_pairs])
-    dst_points = np.array([(pair[1][1],pair[1][0], 1) for pair in point_pairs])
+    src_points = np.array([(pair[0][1], pair[0][0], 1)
+                           for pair in point_pairs])
+    dst_points = np.array([(pair[1][1], pair[1][0], 1)
+                           for pair in point_pairs])
 
     H, inlier_count = ransac(src_points=src_points,
                              dst_points=dst_points,
@@ -128,5 +164,5 @@ if __name__ == "__main__":
 
     cv.namedWindow("Display window")
     cv.imshow("Display window", new_img)
-    cv.imwrite(f"{sys.argv[1]}+{sys.argv[2]}.png",new_img)
+    cv.imwrite(f"{sys.argv[1]}+{sys.argv[2]}.png", new_img)
     cv.waitKey(0)
