@@ -31,8 +31,7 @@ def distance(points, v) -> np.ndarray:
 
 def LSQ(points: np.ndarray, inc_inliers: np.ndarray, threshold: float,
         **kwargs) -> Tuple[np.ndarray, np.ndarray]:
-    masspoint = np.zeros((3, ))
-    masspoint += np.sum(inc_inliers, axis=0)
+    masspoint = np.sum(inc_inliers, axis=0)
 
     masspoint /= inc_inliers.shape[0]
     normalized_points = inc_inliers - masspoint
