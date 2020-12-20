@@ -99,7 +99,7 @@ def ransac(src_points, dst_points, threshold, max_iter):
     best_inlier_count = -1
     best_homography = None
     for _ in range(max_iter):
-        indices = np.random.choice(len(src_points), 15, replace=False)
+        indices = np.random.choice(len(src_points), len(src_points)//4 , replace=False)
         selected_src_points = src_points[indices]
         selected_dst_points = dst_points[indices]
         H = calc_homography(src_points=selected_src_points,
