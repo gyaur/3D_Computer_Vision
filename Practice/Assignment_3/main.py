@@ -8,13 +8,9 @@ from math import sqrt
 
 def calc_homography(src_points, dst_points):
 
-    normalized_src_points, normalized_dst_points, T1, T2 = normalize(
-        src_points, dst_points)
-
     iter_num = len(point_pairs)
     A = np.zeros((2 * iter_num, 9))
-    for i, (first, second) in enumerate(
-            zip(normalized_src_points, normalized_dst_points)):
+    for i, (first, second) in enumerate(zip(src_points, dst_points)):
         u1 = first[0]
         v1 = first[1]
 
@@ -51,7 +47,7 @@ def calc_homography(src_points, dst_points):
 
     # print(H)
 
-    return np.linalg.inv(T2) @ H @ T1
+    return H
 
 
 def normalize(src_points, dst_points):
@@ -91,19 +87,21 @@ def num_inlier(src_points, dst_points, H, threshold) -> float:
         np.sum(np.square(dst_points -
                          (proj_points / proj_points[:, -1].reshape(-1, 1))),
                axis=1))
-               
+
     return np.sum(error < threshold)
 
 
-def ransac(src_points, dst_points, threshold, max_iter):
+def ransac(src_points, dst_points, normalized_src_points,
+           normalized_dst_points, T1, T2, threshold, max_iter):
     best_inlier_count = -1
     best_homography = None
     for _ in range(max_iter):
         indices = np.random.choice(len(src_points), 4, replace=False)
-        selected_src_points = src_points[indices]
-        selected_dst_points = dst_points[indices]
+        selected_src_points = normalized_src_points[indices]
+        selected_dst_points = normalized_dst_points[indices]
         H = calc_homography(src_points=selected_src_points,
                             dst_points=selected_dst_points)
+        H = np.linalg.inv(T2) @ H @ T1
 
         inliers = num_inlier(src_points=src_points,
                              dst_points=dst_points,
@@ -150,10 +148,17 @@ if __name__ == "__main__":
     dst_points = np.array([(pair[1][1], pair[1][0], 1)
                            for pair in point_pairs])
 
+    normalized_src_points, normalized_dst_points, T1, T2 = normalize(
+        src_points=src_points, dst_points=dst_points)
+
     H, inlier_count = ransac(src_points=src_points,
                              dst_points=dst_points,
+                             normalized_src_points=normalized_src_points,
+                             normalized_dst_points=normalized_dst_points,
+                             T1=T1,
+                             T2=T2,
                              threshold=1,
-                             max_iter=1000)
+                             max_iter=5000)
     print(inlier_count)
 
     new_shape = (img1.shape[0] * 2, img1.shape[1] * 2, img1.shape[2])
