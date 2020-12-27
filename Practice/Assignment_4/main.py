@@ -1,38 +1,42 @@
 import cv2 as cv
-from numpy.core.numeric import full
 import pandas as pd
 import sys
 import numpy as np
 
 
-def estimate_fundamnetal_matrix(src_points, dst_points, max_iter, threshold):
+def estimate_fundamnetal_matrix(src_points, dst_points, normalized_src_points,
+                                normalized_dst_points, T1, T2, max_iter,
+                                threshold):
     best_inlier_count = -1
     best_F = None
     best_inliers = None
     for _ in range(max_iter):
         indices = np.random.choice(len(src_points), 8, replace=False)
-        selected_src_points = src_points[indices]
-        selected_dst_points = dst_points[indices]
-        F = LSQ_fundamental_matrix(selected_src_points, selected_dst_points)
-        #TODO: denormalize
+        selected_src_points = normalized_src_points[indices]
+        selected_dst_points = normalized_dst_points[indices]
 
-        num_inliers, *inliers = num_inlier(src_points=src_points,
-                                           dst_points=dst_points,
-                                           F=F,
-                                           threshold=threshold)
+        F = LSQ_fundamental_matrix(src_points=selected_src_points,
+                                   dst_points=selected_dst_points)
+        F = T2.T @ F @ T1
+
+        num_inliers, inlier_inds = num_inlier(src_points=src_points,
+                                              dst_points=dst_points,
+                                              F=F,
+                                              threshold=threshold)
 
         if num_inliers > best_inlier_count:
             best_inlier_count = num_inliers
-            best_F = F
-            best_inliers = inliers
+            best_F = np.copy(F)
+            best_inliers = inlier_inds
+
+    print(best_inlier_count)
 
     return best_F, best_inliers
 
 
 def num_inlier(src_points, dst_points, F, threshold):
-    src_inliers = []
-    dst_inliers = []
-    for src, dst in zip(src_points, dst_points):
+    inlier_inds = []
+    for ind, (src, dst) in enumerate(zip(src_points, dst_points)):
         pt1 = np.array([*src, 1])
         pt2 = np.array([*dst, 1])
 
@@ -52,10 +56,9 @@ def num_inlier(src_points, dst_points, F, threshold):
         dist = (distanceL + distanceR) / 2
 
         if dist < threshold:
-            src_inliers.append(src)
-            dst_inliers.append(dst)
+            inlier_inds.append(ind)
 
-    return len(src_inliers), src_inliers, dst_inliers
+    return len(inlier_inds), inlier_inds
 
 
 def LSQ_fundamental_matrix(src_points, dst_points) -> np.ndarray:
@@ -63,10 +66,10 @@ def LSQ_fundamental_matrix(src_points, dst_points) -> np.ndarray:
     A = np.empty((num_points, 9))
     for ind, (src, dst) in enumerate(zip(src_points, dst_points)):
 
-        x1,y1 = src
-        x2,y2 = dst
+        x1, y1 = src.ravel()
+        x2, y2 = dst.ravel()
 
-        A[ind, 0] = x1 * y2
+        A[ind, 0] = x1 * x2
         A[ind, 1] = x2 * y1
         A[ind, 2] = x2
         A[ind, 3] = y2 * x1
@@ -91,7 +94,7 @@ def get_projection_matrices(E, K, src_point, dst_point):
     if np.linalg.det(U) < 0:
         U[:, 2] *= -1
     if np.linalg.det(V) < 0:
-        V[2] *= -1  # this might be [2]
+        V[2] *= -1
 
     W = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
 
@@ -165,10 +168,10 @@ def linear_triangulation(P1, P2, src_point, dst_point):
 
 def normalize(src_points, dst_points):
     # pts = np.concatenate((src_points, dst_points), axis=-1)
-    normalized_src_points = np.copy(src_points[:, :2])
-    masspoint = np.sum(normalized_src_points, axis=0)
-    masspoint /= normalized_src_points.shape[0]
-    avg_distance = np.average(np.linalg.norm(normalized_src_points, axis=1))
+    normalized_src_points = np.copy(src_points)
+    masspoint = np.average(normalized_src_points, axis=0)
+    avg_distance = np.average(
+        np.linalg.norm(normalized_src_points, axis=1, ord=2))
     ratio = np.sqrt(2) / avg_distance
     normalized_src_points -= masspoint
     normalized_src_points *= ratio
@@ -178,10 +181,10 @@ def normalize(src_points, dst_points):
     T1[0, 2] = -ratio * masspoint[0]
     T1[1, 2] = -ratio * masspoint[1]
 
-    normalized_dst_points = np.copy(dst_points[:, :2])
-    masspoint = np.sum(normalized_dst_points, axis=0)
-    masspoint /= normalized_dst_points.shape[0]
-    avg_distance = np.average(np.linalg.norm(normalized_dst_points, axis=1))
+    normalized_dst_points = np.copy(dst_points)
+    masspoint = np.average(normalized_dst_points, axis=0)
+    avg_distance = np.average(
+        np.linalg.norm(normalized_dst_points, axis=1, ord=2))
     ratio = np.sqrt(2) / avg_distance
     normalized_dst_points -= masspoint
     normalized_dst_points *= ratio
@@ -190,46 +193,52 @@ def normalize(src_points, dst_points):
     T2[1, 1] = ratio
     T2[0, 2] = -ratio * masspoint[0]
     T2[1, 2] = -ratio * masspoint[1]
-    
+
     return normalized_src_points, normalized_dst_points, T1, T2
 
 
 if __name__ == "__main__":
     img1 = cv.imread(sys.argv[1])
     img2 = cv.imread(sys.argv[2])
-    # img1 = img1.reshape(img1.shape[1], img1.shape[0], -1)
-    # img2 = img2.reshape(img2.shape[1], img2.shape[0], -1)
 
-    points = pd.read_csv(sys.argv[3], sep=" ", header=None)  #matches
+    points = pd.read_csv(sys.argv[3], sep=" ", header=None)
     points.index = pd.Index(["u1", "v1", "u2", "v2"])
     points = points.transpose()
 
     K = np.array(pd.read_csv(sys.argv[4], sep=" ", header=None))
 
-    src_points = np.array(points[["v1", "u1"]])
-    dst_points = np.array(points[["v2", "u2"]])
-    # TODO: remove if shit
-    # TODO: normalize
+    src_points = np.array(points[["u1", "v1"]])
+    dst_points = np.array(points[["u2", "v2"]])
 
-    F, (src_inliers,
-        dst_inliers) = estimate_fundamnetal_matrix(src_points=src_points,
-                                                   dst_points=dst_points,
-                                                   max_iter=5000,
-                                                   threshold=1)
+    normalized_src_points, normalized_dst_points, T1, T2 = normalize(
+        src_points=src_points, dst_points=dst_points)
+
+    F, inlier_inds = estimate_fundamnetal_matrix(
+        src_points=src_points,
+        dst_points=dst_points,
+        normalized_src_points=normalized_src_points,
+        normalized_dst_points=normalized_dst_points,
+        T1=T1,
+        T2=T2,
+        max_iter=5000,
+        threshold=1)
 
     E = K.T @ F @ K
+
+    src_inliers = src_points[inlier_inds]
+    dst_inliers = dst_points[inlier_inds]
 
     src_point = src_inliers[0]
     dst_point = dst_inliers[0]
 
     P1, P2 = get_projection_matrices(E, K, src_point, dst_point)
 
-    with open("out.txt", "w") as f:
+    with open(f"out{sys.argv[3][-5]}.xyz", "w") as f:
         for src, dst in zip(src_inliers, dst_inliers):
             point = np.around(linear_triangulation(P1, P2, src, dst), 5)[:3]
-            color = np.round((img1[round(src[0]), round(src[1])] +
-                              img2[round(dst[0]), round(dst[1])]) / 2)
-            # color = img1[round(src[0]), round(src[1])]
-            # TODO: remove if shit
-            data = np.concatenate((point, color))
-            f.write(f"{' '.join(str(x) for x in data)}\n")
+            # color = np.round((img1[round(src[1]), round(src[0])] +
+            #                   img2[round(dst[1]), round(dst[0])]) / 2)
+            # # color = img1[round(src[1]), round(src[0])]
+            # # TODO: remove if shit
+            # data = np.concatenate((point, color))
+            f.write(f"{' '.join(str(x) for x in point)}\n")
