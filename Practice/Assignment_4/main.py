@@ -220,7 +220,7 @@ if __name__ == "__main__":
         normalized_dst_points=normalized_dst_points,
         T1=T1,
         T2=T2,
-        max_iter=5000,
+        max_iter=1000,
         threshold=1)
 
     E = K.T @ F @ K
@@ -233,12 +233,7 @@ if __name__ == "__main__":
 
     P1, P2 = get_projection_matrices(E, K, src_point, dst_point)
 
-    with open(f"out{sys.argv[3][-5]}.xyz", "w") as f:
+    with open(f"out{sys.argv[3][-5]}.txt", "w") as f:
         for src, dst in zip(src_inliers, dst_inliers):
             point = np.around(linear_triangulation(P1, P2, src, dst), 5)[:3]
-            # color = np.round((img1[round(src[1]), round(src[0])] +
-            #                   img2[round(dst[1]), round(dst[0])]) / 2)
-            # # color = img1[round(src[1]), round(src[0])]
-            # # TODO: remove if shit
-            # data = np.concatenate((point, color))
-            f.write(f"{' '.join(str(x) for x in point)}\n")
+            f.write(f"{' '.join(str(x) for x in -point)}\n")
