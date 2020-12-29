@@ -236,4 +236,4 @@ if __name__ == "__main__":
     with open(f"out{sys.argv[3][-5]}.txt", "w") as f:
         for src, dst in zip(src_inliers, dst_inliers):
             point = np.around(linear_triangulation(P1, P2, src, dst), 5)[:3]
-            f.write(f"{' '.join(str(x) for x in -point)}\n")
+            f.write(f"{' '.join(str(x) for x in point)}\n")
